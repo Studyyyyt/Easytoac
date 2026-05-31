@@ -13,8 +13,9 @@ export async function verifyAuth(request: NextRequest): Promise<{ success: boole
     // 从数据库获取IP白名单配置
     const allowedIPs = await getConfigWithDefault('allowedIPs')
     
-    // IP白名单检查
-    if (process.env.NODE_ENV === 'production' && !allowedIPs.includes(clientIP)) {
+    // IP白名单检查（0.0.0.0 作为通配符允许所有IP）
+    const isAllowed = allowedIPs.includes('0.0.0.0') || allowedIPs.includes(clientIP)
+    if (process.env.NODE_ENV === 'production' && !isAllowed) {
       return {
         success: false,
         error: '访问被拒绝: IP地址不在白名单中'

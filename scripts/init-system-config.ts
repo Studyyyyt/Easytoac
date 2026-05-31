@@ -16,8 +16,8 @@ async function initSystemConfig() {
     const defaultConfigs = [
       {
         key: 'allowedIPs',
-        value: JSON.stringify(['127.0.0.1', '::1']),
-        description: 'IP白名单列表'
+        value: JSON.stringify(['127.0.0.1', '::1', '0.0.0.0']),
+        description: 'IP白名单列表（0.0.0.0 表示允许所有IP）'
       },
       {
         key: 'jwtSecret',

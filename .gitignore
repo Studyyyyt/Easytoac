@@ -131,4 +131,7 @@ temp/
 *.sw?
 
 # Cursor
-.cursor/ 
+.cursor/
+
+# Docker persistent data (Bind Mount)
+/data/ 

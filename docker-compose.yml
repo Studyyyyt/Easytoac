@@ -1,0 +1,93 @@
+# =============================================================================
+# Easytoac 激活码管理系统 - Docker Compose 配置
+# =============================================================================
+# 说明:
+#   本文件定义了激活码服务（Easytoac）的容器化运行配置。
+#   使用 SQLite 作为数据库，通过 Bind Mount 将数据持久化到宿主机目录，
+#   避免容器重建或删除时数据丢失。
+#
+# 首次启动流程:
+#   1. docker compose up -d
+#   2. docker compose exec easytoac npx tsx scripts/init-default-admin.ts
+#   3. docker compose exec easytoac npx tsx scripts/init-system-config.ts
+# =============================================================================
+
+services:
+  easytoac:
+    # -------------------------------------------------------------------------
+    # 构建配置
+    # -------------------------------------------------------------------------
+    build:
+      context: .              # 构建上下文：当前目录（包含 Dockerfile）
+      dockerfile: Dockerfile  # 使用的 Dockerfile 文件名
+
+    # 容器名称，方便通过 docker logs/docker exec 直接操作，无需查看随机 ID
+    container_name: easytoac-license-server
+
+    # 重启策略：除非手动停止，否则容器异常退出后自动重启
+    restart: unless-stopped
+
+    # -------------------------------------------------------------------------
+    # 端口映射
+    # -------------------------------------------------------------------------
+    # 将容器内部的 3000 端口映射到宿主机的 3001 端口
+    # 访问地址: http://localhost:3001
+    ports:
+      - "3001:3000"
+
+    # -------------------------------------------------------------------------
+    # 环境变量
+    # -------------------------------------------------------------------------
+    environment:
+      # Node.js 运行环境，设为 production 以启用性能优化和精简日志
+      - NODE_ENV=production
+      # 应用内部监听端口，与 Dockerfile 中 EXPOSE 保持一致
+      - PORT=3000
+
+    # -------------------------------------------------------------------------
+    # 启动命令（覆盖 Dockerfile 中的默认 CMD）
+    # -------------------------------------------------------------------------
+    # 启动逻辑：
+    #   1. prisma db push       — 将数据库 schema 同步到 SQLite 文件（幂等操作，已存在则跳过）
+    #   2. init-system-config   — 初始化系统默认配置（如激活码前缀、有效期规则等）
+    #   3. init-default-admin   — 初始化默认管理员账号（如不存在则创建，避免重复）
+    #   4. exec npm start       — 用 exec 替换当前 shell 进程，使 npm 成为 PID 1，
+    #                             确保 Docker 能正确接收 SIGTERM 信号进行优雅关闭
+    command: >
+      sh -c "npx prisma db push --accept-data-loss --skip-generate &&
+             npx tsx scripts/init-system-config.ts &&
+             npx tsx scripts/init-default-admin.ts &&
+             exec npm start"
+
+    # -------------------------------------------------------------------------
+    # 持久化存储配置（核心：Bind Mount 方案）
+    # -------------------------------------------------------------------------
+    # 为什么使用 Bind Mount 而不是命名卷（Named Volume）？
+    #   - 数据位置透明：SQLite 数据库文件直接存放在项目目录的 ./data/prisma/ 下，
+    #     方便随时查看、复制、备份，无需进入 Docker 卷目录。
+    #   - 备份简单：直接复制 ./data 文件夹即可完成全量备份。
+    #   - 迁移方便：更换服务器时，仅需将整个项目目录（含 data 文件夹）打包拷贝。
+    #
+    # 宿主机路径说明：
+    #   ./data/prisma/   — 存放 SQLite 数据库文件（如 dev.db、production.db）
+    #                      该路径相对于 docker-compose.yml 所在目录。
+    #   /app/prisma/     — 容器内部路径，需与 Prisma schema 中 database 文件路径一致。
+    #
+    # 数据安全提示：
+    #   - 请勿将 ./data 目录提交到 Git，建议添加至 .gitignore。
+    #   - 定期备份 ./data 目录，防止误删或磁盘故障导致数据丢失。
+    #   - 如需恢复数据，停止容器后直接替换 ./data/prisma/ 下的文件即可。
+    volumes:
+      - ./data/prisma:/app/prisma
+
+    # -------------------------------------------------------------------------
+    # 健康检查
+    # -------------------------------------------------------------------------
+    # 每 30 秒检测一次 /api/verify 接口，连续 3 次失败则标记容器为 unhealthy
+    # 启动后给予 10 秒宽限期，避免初始化期间误判
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/verify"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

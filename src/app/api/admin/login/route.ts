@@ -47,8 +47,8 @@ export async function POST(request: NextRequest) {
 
     response.cookies.set('auth-token', token, {
       httpOnly: true,
-      secure: appConfig.server.nodeEnv === 'production',
-      sameSite: 'strict',
+      secure: false,
+      sameSite: 'lax',
       maxAge: 24 * 60 * 60 // 24小时
     })
 

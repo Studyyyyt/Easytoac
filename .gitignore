@@ -134,4 +134,7 @@ temp/
 .cursor/
 
 # Docker persistent data (Bind Mount)
-/data/ 
+/data/
+
+# Deploy packages
+deploy/ 

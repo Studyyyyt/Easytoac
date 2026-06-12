@@ -10,35 +10,48 @@ export async function DELETE(request: NextRequest) {
       return createAuthResponse(authResult.error || '认证失败', 401)
     }
 
-    const { id } = await request.json()
+    const body = await request.json()
+    const { id, ids } = body
 
-    if (!id) {
+    // 兼容单条删除（id）和批量删除（ids）
+    const targetIds: number[] = ids
+      ? ids.map((i: number) => parseInt(String(i)))
+      : id
+        ? [parseInt(String(id))]
+        : []
+
+    if (targetIds.length === 0) {
       return NextResponse.json(
         { success: false, message: '激活码ID不能为空' },
         { status: 400 }
       )
     }
 
-    // 检查激活码是否存在
-    const existingCode = await prisma.activationCode.findUnique({
-      where: { id: parseInt(id) }
+    // 检查所有激活码是否存在
+    const existingCodes = await prisma.activationCode.findMany({
+      where: { id: { in: targetIds } }
     })
 
-    if (!existingCode) {
+    if (existingCodes.length === 0) {
       return NextResponse.json(
         { success: false, message: '激活码不存在' },
         { status: 404 }
       )
     }
 
+    const foundIds = existingCodes.map(code => code.id)
+
     // 删除激活码
-    await prisma.activationCode.delete({
-      where: { id: parseInt(id) }
+    const result = await prisma.activationCode.deleteMany({
+      where: { id: { in: foundIds } }
     })
 
     return NextResponse.json({
       success: true,
-      message: '激活码删除成功'
+      message: targetIds.length > 1
+        ? `成功删除 ${result.count} 个激活码`
+        : '激活码删除成功',
+      deletedCount: result.count
     })
 
   } catch (error) {
@@ -48,4 +61,4 @@ export async function DELETE(request: NextRequest) {
       { status: 500 }
     )
   }
-} 
+}

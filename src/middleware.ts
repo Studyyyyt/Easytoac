@@ -19,8 +19,9 @@ export async function middleware(request: NextRequest) {
       process.env.ALLOWED_IPS.split(',').map(ip => ip.trim()) : 
       DEFAULT_ALLOWED_IPS
     
-    // IP白名单检查 - 在开发环境下放宽限制
-    if (process.env.NODE_ENV === 'production' && !allowedIPs.includes(clientIP)) {
+    // IP白名单检查 - 0.0.0.0 作为通配符允许所有IP
+    const isAllowed = allowedIPs.includes('0.0.0.0') || allowedIPs.includes(clientIP)
+    if (process.env.NODE_ENV === 'production' && !isAllowed) {
       return NextResponse.json(
         { error: '访问被拒绝: IP地址不在白名单中' },
         { status: 403 }

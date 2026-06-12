@@ -55,6 +55,8 @@ export default function DashboardPage() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [systemConfigs, setSystemConfigs] = useState<any[]>([])
+  const [authChecking, setAuthChecking] = useState(true)
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
   const router = useRouter()
 
   // 自定义确认对话框状态
@@ -156,6 +158,57 @@ export default function DashboardPage() {
     }
   }
 
+  const handleBatchDelete = async () => {
+    if (selectedIds.length === 0) return
+    openConfirm({
+      title: '批量删除确认',
+      message: `确定要删除选中的 ${selectedIds.length} 个激活码吗？删除后不可恢复。`,
+      confirmText: '批量删除',
+      confirmVariant: 'danger',
+      onConfirm: async () => {
+        closeConfirm()
+        try {
+          setLoading(true)
+          const response = await fetch(`/api/admin/codes/delete`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: selectedIds }),
+          })
+          const data = await response.json()
+          if (data.success) {
+            setMessage(`成功删除 ${data.deletedCount || selectedIds.length} 个激活码`)
+            setMessageType('success')
+            setSelectedIds([])
+            fetchAllCodes()
+            fetchStats()
+          } else {
+            setMessage(data.message || '批量删除失败')
+            setMessageType('error')
+          }
+        } catch (error) {
+          setMessage('网络错误，请重试')
+          setMessageType('error')
+        } finally {
+          setLoading(false)
+        }
+      },
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === paginatedCodes.length) {
+      setSelectedIds([])
+    } else {
+      setSelectedIds(paginatedCodes.map(c => c.id))
+    }
+  }
+
+  const toggleSelectOne = (id: number) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    )
+  }
+
   const handleDeleteCode = async (id: number) => {
     openConfirm({
       title: '删除确认',
@@ -227,6 +280,38 @@ export default function DashboardPage() {
     if (activeTab === 'list') fetchAllCodes()
     if (activeTab === 'systemConfig') fetchSystemConfigs()
   }, [activeTab])
+
+  // 认证检查：页面加载时验证登录状态
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/admin/codes/stats')
+        if (response.status === 401) {
+          router.push('/admin/login')
+          return
+        }
+      } catch (error) {
+        console.error('认证检查失败:', error)
+      } finally {
+        setAuthChecking(false)
+      }
+    }
+    checkAuth()
+  }, [router])
+
+  // 消息自动消失
+  useEffect(() => {
+    if (!message) return
+    const timer = setTimeout(() => {
+      setMessage('')
+    }, 3000)
+    return () => clearTimeout(timer)
+  }, [message])
+
+  // 筛选或页码变化时清空选中
+  useEffect(() => {
+    setSelectedIds([])
+  }, [searchTerm, statusFilter, cardTypeFilter, currentPage])
 
   const handleLogout = async () => {
     try {
@@ -377,6 +462,49 @@ export default function DashboardPage() {
     document.body.removeChild(link)
   }
 
+  const renderPagination = () => {
+    if (totalPages <= 1) return null
+    const pages: (number | string)[] = []
+    const showEllipsis = totalPages > 7
+    if (!showEllipsis) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i)
+    } else {
+      pages.push(1)
+      if (currentPage > 3) pages.push('...')
+      const start = Math.max(2, currentPage - 1)
+      const end = Math.min(totalPages - 1, currentPage + 1)
+      for (let i = start; i <= end; i++) pages.push(i)
+      if (currentPage < totalPages - 2) pages.push('...')
+      pages.push(totalPages)
+    }
+    return (
+      <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="text-sm text-gray-600">
+          第 {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, filteredCodes.length)} 条，共 {filteredCodes.length} 条
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setCurrentPage(currentPage - 1)} disabled={currentPage === 1} className="px-3 py-1.5 rounded-lg text-sm bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 disabled:opacity-30 transition-all">
+            上一页
+          </button>
+          <div className="flex gap-1">
+            {pages.map((page, idx) =>
+              typeof page === 'string' ? (
+                <span key={`ellipsis-${idx}`} className="w-8 h-8 flex items-center justify-center text-sm text-gray-600">...</span>
+              ) : (
+                <button key={page} onClick={() => setCurrentPage(page)} className={`w-8 h-8 rounded-lg text-sm font-medium transition-all ${currentPage === page ? 'bg-accent-500 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>
+                  {page}
+                </button>
+              )
+            )}
+          </div>
+          <button onClick={() => setCurrentPage(currentPage + 1)} disabled={currentPage === totalPages} className="px-3 py-1.5 rounded-lg text-sm bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 disabled:opacity-30 transition-all">
+            下一页
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const filteredCodes = allCodes.filter(code => {
     const matchesSearch = code.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (code.usedBy && code.usedBy.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -525,6 +653,16 @@ export default function DashboardPage() {
 
       {/* 主内容区 */}
       <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* 认证检查加载遮罩 */}
+        {authChecking && (
+          <div className="fixed inset-0 bg-[#0a0a0f]/60 backdrop-blur-sm z-50 flex items-center justify-center">
+            <div className="flex items-center gap-3">
+              <div className="loading-spinner" />
+              <span className="text-gray-400">验证登录状态...</span>
+            </div>
+          </div>
+        )}
+
         {/* 确认对话框 */}
         <ConfirmModal
           isOpen={confirmModal.isOpen}
@@ -550,7 +688,16 @@ export default function DashboardPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               )}
             </svg>
-            {message}
+            <span className="flex-1">{message}</span>
+            <button
+              onClick={() => setMessage('')}
+              className="p-1 rounded-lg hover:bg-white/10 transition-all"
+              title="关闭"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
         )}
 
@@ -558,7 +705,7 @@ export default function DashboardPage() {
         {activeTab === 'stats' && (
           <div className="space-y-6 animate-fade-in">
             {/* 统计卡片 */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 { label: '总激活码数', value: stats.total, icon: (
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
@@ -741,14 +888,28 @@ export default function DashboardPage() {
 
             {/* 列表 */}
             <div className="glass-card rounded-2xl p-6">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
                 <h3 className="text-lg font-semibold text-white">
                   激活码列表 <span className="text-gray-600 font-mono text-sm ml-2">({filteredCodes.length})</span>
                 </h3>
-                <button onClick={handleCleanupExpired} disabled={loading} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-all disabled:opacity-50">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" /></svg>
-                  清理过期绑定
-                </button>
+                <div className="flex items-center gap-2">
+                  {selectedIds.length > 0 && (
+                    <button
+                      onClick={handleBatchDelete}
+                      disabled={loading}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all disabled:opacity-50"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                      </svg>
+                      删除选中 ({selectedIds.length})
+                    </button>
+                  )}
+                  <button onClick={handleCleanupExpired} disabled={loading} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-all disabled:opacity-50">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" /></svg>
+                    清理过期绑定
+                  </button>
+                </div>
               </div>
 
               {loading ? (
@@ -757,31 +918,47 @@ export default function DashboardPage() {
                   <p className="mt-4 text-gray-500">加载中...</p>
                 </div>
               ) : (
-                <>
+                <div>
                   <div className="overflow-x-auto -mx-6 px-6">
                     <table className="table-dark">
                       <thead>
                         <tr>
+                          <th className="w-10">
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.length === paginatedCodes.length && paginatedCodes.length > 0}
+                              onChange={toggleSelectAll}
+                              className="w-4 h-4 rounded border-white/20 bg-white/5 text-accent-500 focus:ring-accent-500/50"
+                            />
+                          </th>
                           <th>激活码</th>
                           <th>状态</th>
                           <th>套餐</th>
-                          <th>创建时间</th>
-                          <th>过期时间</th>
-                          <th>使用时间</th>
-                          <th>使用者</th>
+                          <th className="hidden lg:table-cell">创建时间</th>
+                          <th className="hidden lg:table-cell">过期时间</th>
+                          <th className="hidden md:table-cell">使用时间</th>
+                          <th className="hidden xl:table-cell">使用者</th>
                           <th className="text-right">操作</th>
                         </tr>
                       </thead>
                       <tbody>
                         {paginatedCodes.map((code) => (
                           <tr key={code.id}>
+                            <td className="w-10">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(code.id)}
+                                onChange={() => toggleSelectOne(code.id)}
+                                className="w-4 h-4 rounded border-white/20 bg-white/5 text-accent-500 focus:ring-accent-500/50"
+                              />
+                            </td>
                             <td className="font-mono text-white">{code.code}</td>
                             <td>{getStatusBadge(code)}</td>
                             <td>{getCardTypeDisplay(code)}</td>
-                            <td>{new Date(code.createdAt).toLocaleString()}</td>
-                            <td>{!code.isUsed ? (code.validDays ? '激活后生效' : '无限期') : (getActualExpiresAt(code)?.toLocaleString() || '无限期')}</td>
-                            <td>{code.usedAt ? new Date(code.usedAt).toLocaleString() : '-'}</td>
-                            <td className="font-mono text-xs">{code.usedBy || '-'}</td>
+                            <td className="hidden lg:table-cell">{new Date(code.createdAt).toLocaleString()}</td>
+                            <td className="hidden lg:table-cell">{!code.isUsed ? (code.validDays ? '激活后生效' : '无限期') : (getActualExpiresAt(code)?.toLocaleString() || '无限期')}</td>
+                            <td className="hidden md:table-cell">{code.usedAt ? new Date(code.usedAt).toLocaleString() : '-'}</td>
+                            <td className="hidden xl:table-cell font-mono text-xs">{code.usedBy || '-'}</td>
                             <td className="text-right">
                               <div className="flex items-center justify-end gap-3">
                                 <button onClick={() => copyToClipboard(code.code)} className="p-1.5 rounded-lg text-gray-500 hover:text-accent-400 hover:bg-accent-500/10 transition-all" title="复制">
@@ -799,29 +976,8 @@ export default function DashboardPage() {
                   </div>
 
                   {/* 分页 */}
-                  {totalPages > 1 && (
-                    <div className="mt-6 flex items-center justify-between">
-                      <div className="text-sm text-gray-600">
-                        第 {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, filteredCodes.length)} 条，共 {filteredCodes.length} 条
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => setCurrentPage(currentPage - 1)} disabled={currentPage === 1} className="px-3 py-1.5 rounded-lg text-sm bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 disabled:opacity-30 transition-all">
-                          上一页
-                        </button>
-                        <div className="flex gap-1">
-                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                            <button key={page} onClick={() => setCurrentPage(page)} className={`w-8 h-8 rounded-lg text-sm font-medium transition-all ${currentPage === page ? 'bg-accent-500 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>
-                              {page}
-                            </button>
-                          ))}
-                        </div>
-                        <button onClick={() => setCurrentPage(currentPage + 1)} disabled={currentPage === totalPages} className="px-3 py-1.5 rounded-lg text-sm bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 disabled:opacity-30 transition-all">
-                          下一页
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
+                  {renderPagination()}
+                </div>
               )}
             </div>
           </div>

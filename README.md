@@ -129,56 +129,34 @@ npm run dev
 ## 项目结构
 
 ```
-├── prisma/                    # Prisma配置和数据库模型
-│   ├── schema.prisma         # 数据库模型定义
-│   └── dev.db               # 开发环境SQLite数据库
-├── scripts/                  # 工具脚本
-│   ├── init-admin.ts        # 初始化管理员账号
-│   ├── init-default-admin.ts # 初始化默认管理员
-│   ├── init-system-config.ts # 初始化系统配置
-│   ├── backup-db.sh         # 数据库备份脚本
-│   └── restore-db.sh        # 数据库恢复脚本
+├── docker/                   # Docker 部署使用文档
+│   └── README.md            # Docker 用户指南
+├── prisma/                  # Prisma 配置和数据库模型
+│   ├── schema.prisma       # 数据库模型定义
+│   └── dev.db             # 开发环境 SQLite 数据库
+├── scripts/                # 工具脚本
+│   ├── init-default-admin.ts
+│   ├── init-system-config.ts
+│   ├── backup-db.sh
+│   ├── restore-db.sh
+│   └── docker-manage.sh    # Docker 一键管理脚本
 ├── src/
-│   ├── app/                 # Next.js应用代码
-│   │   ├── admin/          # 管理后台页面
-│   │   │   ├── login/     # 登录页面
-│   │   │   └── dashboard/ # 仪表板（含统计、生成、管理功能）
-│   │   ├── api/            # API路由
-│   │   │   ├── admin/     # 管理接口
-│   │   │   │   ├── codes/ # 激活码相关接口
-│   │   │   │   │   ├── generate/ # 生成激活码
-│   │   │   │   │   ├── list/     # 获取激活码列表
-│   │   │   │   │   ├── stats/    # 获取统计数据
-│   │   │   │   │   ├── delete/   # 删除激活码
-│   │   │   │   │   └── cleanup/  # 清理过期激活码绑定
-│   │   │   │   ├── login/ # 管理员登录
-│   │   │   │   ├── logout/ # 管理员登出
-│   │   │   │   ├── change-password/ # 修改密码
-│   │   │   │   └── system-config/ # 系统配置管理
-│   │   │   ├── verify/    # 激活码验证接口
-│   │   │   ├── test-env/  # 测试环境接口
-│   │   │   ├── env-test/  # 环境测试接口
-│   │   │   └── debug/     # 调试接口
-│   │   ├── globals.css     # 全局样式
-│   │   ├── layout.tsx      # 根布局
-│   │   └── page.tsx        # 首页
-│   ├── lib/                # 工具库
-│   │   ├── db.ts          # 数据库连接
-│   │   ├── jwt.ts         # JWT工具
-│   │   ├── auth-middleware.ts # 认证中间件库
-│   │   └── config-service.ts  # 配置服务
-│   ├── config.ts           # 系统配置文件
-│   └── middleware.ts       # Next.js中间件
-├── CHANGELOG.md            # 版本更新日志
-├── DATABASE_BACKUP_GUIDE.md # 数据库备份指南
-├── apidocs.md             # API文档
-├── xitonkaifa.md          # 系统开发文档
-├── simple_test.js         # 简单测试脚本
+│   ├── app/               # Next.js 应用代码
+│   │   ├── admin/        # 管理后台页面
+│   │   ├── api/          # API 路由
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   └── page.tsx
+│   ├── lib/              # 工具库
+│   ├── config.ts         # 系统配置文件
+│   └── middleware.ts     # Next.js 中间件
+├── docker-compose.yml
+├── Dockerfile
 ├── package.json
-├── next.config.js         # Next.js配置
-├── postcss.config.js      # PostCSS配置
-├── tailwind.config.js     # Tailwind配置
-└── tsconfig.json          # TypeScript配置                 
+├── next.config.js
+├── postcss.config.js
+├── tailwind.config.js
+└── tsconfig.json
 ```
 
 ## 安全特性
@@ -218,28 +196,27 @@ npm run dev
 
 ### Docker部署
 
-可以使用以下Dockerfile：
+推荐使用项目自带的 Docker 管理脚本，详细说明请查看：
 
-```dockerfile
-FROM node:18-alpine
+📘 **[docker/README.md](./docker/README.md)**
 
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
+快速开始：
 
-COPY . .
-RUN npm run build
+```bash
+# 首次构建并启动
+./scripts/docker-manage.sh build
 
-EXPOSE 3000
-CMD ["npm", "start"]
+# 修改代码后重新构建
+./scripts/docker-manage.sh rebuild
+
+# 生成交付包
+./scripts/docker-manage.sh package
 ```
 
 ## 相关文档
 
-- 📋 **[更新日志](./CHANGELOG.md)** - 查看版本更新记录和新功能介绍
-- 💾 **[数据库备份指南](./DATABASE_BACKUP_GUIDE.md)** - 详细的数据库备份与恢复操作指南
-- 📖 **[API文档](./apidocs.md)** - 完整的API接口文档
-- 🔧 **[系统开发文档](./xitonkaifa.md)** - 系统开发和维护相关文档
+- 📘 **[Docker 使用指南](./docker/README.md)** - Docker 部署、维护和交付包使用说明
+- 📘 **[CLAUDE.md](./CLAUDE.md)** - 项目架构与开发说明（给 Claude Code 的指引）
 
 ## Stargazers over time
 [![Stargazers over time](https://starchart.cc/Fiftonb/Easytoac.svg?variant=adaptive)](https://starchart.cc/Fiftonb/Easytoac)
